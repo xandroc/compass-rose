@@ -11,11 +11,10 @@
 source "/opt/pihole/COL_TABLE"
 
 while true; do
-    read -rp "  ${QST} Are you sure you would like to remove ${COL_WHITE}Pi-hole${COL_NC}? [y/N] " yn
-    case ${yn} in
+    read -rp "  ${QST} Are you sure you would like to remove ${COL_WHITE}Pi-hole${COL_NC}? [y/N] " answer
+    case ${answer} in
         [Yy]* ) break;;
-        [Nn]* ) echo -e "${OVER}  ${COL_LIGHT_GREEN}Uninstall has been cancelled${COL_NC}"; exit 0;;
-        * ) echo -e "${OVER}  ${COL_LIGHT_GREEN}Uninstall has been cancelled${COL_NC}"; exit 0;;
+        * ) echo -e "${OVER}  ${COL_LIGHT_GREEN}Uninstall has been canceled${COL_NC}"; exit 0;;
     esac
 done
 
@@ -31,28 +30,28 @@ else
     else
         echo -e "  ${CROSS} ${str}
             Script called with non-root privileges
-            The Pi-hole requires elevated privleges to uninstall"
+            The Pi-hole requires elevated privileges to uninstall"
         exit 1
     fi
 fi
 
 readonly PI_HOLE_FILES_DIR="/etc/.pihole"
-PH_TEST="true"
+SKIP_INSTALL="true"
 source "${PI_HOLE_FILES_DIR}/automated install/basic-install.sh"
 # setupVars set in basic-install.sh
 source "${setupVars}"
 
-# distro_check() sourced from basic-install.sh
-distro_check
+# package_manager_detect() sourced from basic-install.sh
+package_manager_detect
 
-# Install packages used by the Pi-hole
-DEPS=("${INSTALLER_DEPS[@]}" "${PIHOLE_DEPS[@]}")
+# Uninstall packages used by the Pi-hole
+DEPS=("${INSTALLER_DEPS[@]}" "${PIHOLE_DEPS[@]}" "${OS_CHECK_DEPS[@]}")
 if [[ "${INSTALL_WEB_SERVER}" == true ]]; then
     # Install the Web dependencies
     DEPS+=("${PIHOLE_WEB_DEPS[@]}")
 fi
 
-# Compatability
+# Compatibility
 if [ -x "$(command -v apt-get)" ]; then
     # Debian Family
     PKG_REMOVE=("${PKG_MANAGER}" -y remove --purge)
@@ -76,8 +75,8 @@ removeAndPurge() {
     for i in "${DEPS[@]}"; do
         if package_check "${i}" > /dev/null; then
             while true; do
-                read -rp "  ${QST} Do you wish to remove ${COL_WHITE}${i}${COL_NC} from your system? [Y/N] " yn
-                case ${yn} in
+                read -rp "  ${QST} Do you wish to remove ${COL_WHITE}${i}${COL_NC} from your system? [Y/N] " answer
+                case ${answer} in
                     [Yy]* )
                         echo -ne "  ${INFO} Removing ${i}...";
                         ${SUDO} "${PKG_REMOVE[@]}" "${i}" &> /dev/null;
@@ -113,7 +112,7 @@ removeNoPurge() {
         fi
     fi
     echo -e "${OVER}  ${TICK} Removed Web Interface"
- 
+
     # Attempt to preserve backwards compatibility with older versions
     # to guarantee no additional changes were made to /etc/crontab after
     # the installation of pihole, /etc/crontab.pihole should be permanently
@@ -145,7 +144,9 @@ removeNoPurge() {
 
     ${SUDO} rm -f /etc/dnsmasq.d/adList.conf &> /dev/null
     ${SUDO} rm -f /etc/dnsmasq.d/01-pihole.conf &> /dev/null
+    ${SUDO} rm -f /etc/dnsmasq.d/06-rfc6761.conf &> /dev/null
     ${SUDO} rm -rf /var/log/*pihole* &> /dev/null
+    ${SUDO} rm -rf /var/log/pihole/*pihole* &> /dev/null
     ${SUDO} rm -rf /etc/pihole/ &> /dev/null
     ${SUDO} rm -rf /etc/.pihole/ &> /dev/null
     ${SUDO} rm -rf /opt/pihole/ &> /dev/null
@@ -188,9 +189,17 @@ removeNoPurge() {
             echo -e "  ${CROSS} Unable to remove 'pihole' user"
         fi
     fi
+    # If the pihole group exists, then remove
+    if getent group "pihole" &> /dev/null; then
+        if ${SUDO} groupdel pihole 2> /dev/null; then
+            echo -e "  ${TICK} Removed 'pihole' group"
+        else
+            echo -e "  ${CROSS} Unable to remove 'pihole' group"
+        fi
+    fi
 
     echo -e "\\n   We're sorry to see you go, but thanks for checking out Pi-hole!
-       If you need help, reach out to us on Github, Discourse, Reddit or Twitter
+       If you need help, reach out to us on GitHub, Discourse, Reddit or Twitter
        Reinstall at any time: ${COL_WHITE}curl -sSL https://install.pi-hole.net | bash${COL_NC}
 
       ${COL_LIGHT_RED}Please reset the DNS on your router/clients to restore internet connectivity
@@ -198,11 +207,7 @@ removeNoPurge() {
 }
 
 ######### SCRIPT ###########
-if command -v vcgencmd &> /dev/null; then
-    echo -e "  ${INFO} All dependencies are safe to remove on Raspbian"
-else
-    echo -e "  ${INFO} Be sure to confirm if any dependencies should not be removed"
-fi
+echo -e "  ${INFO} Be sure to confirm if any dependencies should not be removed"
 while true; do
     echo -e "  ${INFO} ${COL_YELLOW}The following dependencies may have been added by the Pi-hole install:"
     echo -n "    "
@@ -210,8 +215,8 @@ while true; do
         echo -n "${i} "
     done
     echo "${COL_NC}"
-    read -rp "  ${QST} Do you wish to go through each dependency for removal? (Choosing No will leave all dependencies installed) [Y/n] " yn
-    case ${yn} in
+    read -rp "  ${QST} Do you wish to go through each dependency for removal? (Choosing No will leave all dependencies installed) [Y/n] " answer
+    case ${answer} in
         [Yy]* ) removeAndPurge; break;;
         [Nn]* ) removeNoPurge; break;;
         * ) removeAndPurge; break;;
